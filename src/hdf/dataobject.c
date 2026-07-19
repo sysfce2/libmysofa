@@ -807,9 +807,9 @@ int readDataVar(struct READER *reader, struct DATAOBJECT *data,
        return err; */
     }
     referenceData = findDataobject(reader, dataobject);
-    if (referenceData)
+    if (referenceData && referenceData->name) {
       buffer = referenceData->name;
-    else {
+    } else {
       sprintf(number, "REF%08lX", (long unsigned int)reference);
       buffer = number;
     }
@@ -818,22 +818,28 @@ int readDataVar(struct READER *reader, struct DATAOBJECT *data,
     /*		if(!referenceData) { TODO?
      return MYSOFA_UNSUPPORTED_FORMAT;
      } */
+    if (!buffer) {
+      return MYSOFA_INVALID_FORMAT;
+    }
     if (data->string) {
-      data->string =
-          realloc(data->string, strlen(data->string) + strlen(buffer) + 2);
-      if (!data->string)
+      size_t newlen = strlen(data->string) + strlen(buffer) + 2;
+      char *new_string = realloc(data->string, newlen);
+      if (!new_string)
         return MYSOFA_NO_MEMORY;
+      data->string = new_string;
       strcat(data->string, ",");
       strcat(data->string, buffer);
     } else {
       data->string = mysofa_strdup(buffer);
+      if (!data->string)
+        return MYSOFA_NO_MEMORY;
     }
     break;
 
   default:
     // LCOV_EXCL_START
     mylog("data reader unknown type %d\n", dt->class_and_version & 0xf);
-    return MYSOFA_INTERNAL_ERROR;
+    return MYSOFA_INVALID_FORMAT;
     // LCOV_EXCL_STOP
   }
   return MYSOFA_OK;
@@ -1153,7 +1159,7 @@ static int readOHDRmessages(struct READER *reader,
 
     if (mysofa_tell(reader) != end) {
       mylog("OHDR message length mismatch by %ld\n", mysofa_tell(reader) - end);
-      return MYSOFA_INTERNAL_ERROR;
+      return MYSOFA_INVALID_FORMAT;
     }
   }
 

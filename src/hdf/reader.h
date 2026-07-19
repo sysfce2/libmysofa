@@ -86,7 +86,8 @@ struct ATTRIBUTEINFO {
 };
 
 struct DATASPACE {
-  uint64_t dimension_size[HDF_MAX_DIMENSIONALITY], dimension_max_size[HDF_MAX_DIMENSIONALITY];
+  uint64_t dimension_size[HDF_MAX_DIMENSIONALITY],
+      dimension_max_size[HDF_MAX_DIMENSIONALITY];
   uint8_t dimensionality, flags, type;
 };
 

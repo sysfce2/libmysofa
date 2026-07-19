@@ -25,59 +25,75 @@ int validAddress(struct READER *reader, uint64_t address) {
 }
 
 int mysofa_read(struct READER *reader, void *buf, size_t n) {
+  if (!reader || !buf)
+    return 0;
   if (reader->fhd)
     return fread(buf, 1, n, reader->fhd);
   else {
-    if (reader->memory_pos + n > reader->memory_len) {
+    if (reader->memory_pos >= reader->memory_len)
+      return 0;
+    if (n > reader->memory_len - reader->memory_pos)
       n = reader->memory_len - reader->memory_pos;
-    }
 
     memcpy(buf, reader->memory + reader->memory_pos, n);
     reader->memory_pos += n;
 
-    return n;
+    return (int)n;
   }
 }
 
 int mysofa_seek(struct READER *reader, long offset, int whence) {
+  uint64_t new_pos;
+  if (!reader)
+    return -1;
   if (reader->fhd)
     return fseek(reader->fhd, offset, whence);
   else {
     switch (whence) {
     case SEEK_SET:
+      new_pos = (uint64_t)offset;
       break;
     case SEEK_CUR:
-      offset += reader->memory_pos;
+      if (offset < 0 && (uint64_t)(-offset) > reader->memory_pos)
+        goto invalid;
+      new_pos = reader->memory_pos + (uint64_t)offset;
       break;
     case SEEK_END:
-      offset = reader->memory_len + offset;
+      if (offset < 0 && (uint64_t)(-offset) > reader->memory_len)
+        goto invalid;
+      new_pos = reader->memory_len + (uint64_t)offset;
       break;
     default:
       errno = EINVAL;
       return -1;
     }
 
-      if(offset < 0 || offset > reader->memory_len) {
-        errno = EINVAL;
-        return -1;
-      }
-      reader->memory_pos = offset;
+    if (new_pos > reader->memory_len) {
+    invalid:
+      errno = EINVAL;
+      return -1;
+    }
+    reader->memory_pos = new_pos;
     return 0;
   }
 }
 
 long mysofa_tell(struct READER *reader) {
+  if (!reader)
+    return -1;
   if (reader->fhd)
     return ftell(reader->fhd);
   else
-    return reader->memory_pos;
+    return (long)reader->memory_pos;
 }
 
 int mysofa_getc(struct READER *reader) {
+  if (!reader)
+    return -1;
   if (reader->fhd)
     return fgetc(reader->fhd);
   else {
-    if (reader->memory_pos == reader->memory_len) {
+    if (reader->memory_pos >= reader->memory_len) {
       return -1;
     } else {
       unsigned char ch = reader->memory[reader->memory_pos];
@@ -91,14 +107,16 @@ int mysofa_getc(struct READER *reader) {
 uint64_t readValue(struct READER *reader, int size) {
   int i, c;
   uint64_t value;
+  if (!reader || size < 0 || size > 8)
+    return UINT64_MAX;
   c = mysofa_getc(reader);
   if (c < 0)
-    return 0xffffffffffffffffLL;
+    return UINT64_MAX;
   value = (uint8_t)c;
   for (i = 1; i < size; i++) {
     c = mysofa_getc(reader);
     if (c < 0)
-      return 0xffffffffffffffffLL;
+      return UINT64_MAX;
     value |= ((uint64_t)c) << (i * 8);
   }
   return value;
@@ -158,6 +176,7 @@ static int getArray(struct MYSOFA_ARRAY *array, struct DATAOBJECT *dataobject) {
   float *p1;
   uint64_t *p2;
   unsigned int i;
+  uint64_t count;
 
   struct MYSOFA_ATTRIBUTE *attr = dataobject->attributes;
   while (attr) {
@@ -168,12 +187,17 @@ static int getArray(struct MYSOFA_ARRAY *array, struct DATAOBJECT *dataobject) {
 
   if (dataobject->dt.u.f.bit_precision != 64)
     return MYSOFA_UNSUPPORTED_FORMAT;
-  if ((dataobject->data_len / 8) > UINT32_MAX)
+  if (!dataobject->data || dataobject->data_len == 0)
+    return MYSOFA_INVALID_FORMAT;
+  if (dataobject->data_len % 8 != 0)
+    return MYSOFA_INVALID_FORMAT;
+  count = dataobject->data_len / 8;
+  if (count > UINT32_MAX)
     return MYSOFA_INVALID_FORMAT;
 
   array->attributes = dataobject->attributes;
   dataobject->attributes = NULL;
-  array->elements = dataobject->data_len / 8;
+  array->elements = (unsigned int)count;
 
   p1 = dataobject->data;
   p2 = dataobject->data;
@@ -226,13 +250,13 @@ static int addUserDefinedVariable(struct MYSOFA_HRTF *hrtf,
 
   var->next = NULL;
   // copy name
-  var->name = malloc(strlen(dataobject->name) + 1);
+  var->name = malloc(strlen(dataobject->name ? dataobject->name : "") + 1);
   if (!var->name) {
     free(var->value);
     free(var);
     return errno;
   }
-  strcpy(var->name, dataobject->name);
+  strcpy(var->name, dataobject->name ? dataobject->name : "");
 
   err = getArray(var->value, dataobject);
   if (err != MYSOFA_OK) {
