@@ -93,6 +93,7 @@ if(BUILD_TESTS)
     168
     171
     173
+    248
 )
     # issues with osx    96)
     add_test(NAME fail-issue-${ISSUE} COMMAND ${PROJECT_SOURCE_DIR}/tests/notcrashed.sh
